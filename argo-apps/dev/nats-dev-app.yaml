@@ -1,0 +1,81 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nats-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://nats-io.github.io/k8s/helm/charts/
+    chart: nats
+    targetRevision: 2.14.2
+    helm:
+      values: |
+        config:
+          jetstream:
+            enabled: true
+            fileStore:
+              enabled: true
+              dir: /data
+              pvc:
+                enabled: true
+                size: 5Gi
+                storageClassName: standard
+            memoryStore:
+              enabled: true
+              maxSize: 256Mi
+          mqtt:
+            enabled: true
+            port: 1883
+          cluster:
+            enabled: false
+          monitor:
+            enabled: true
+            port: 8222
+        container:
+          image:
+            repository: nats
+            tag: "2.11-alpine"
+          merge:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+        service:
+          merge:
+            spec:
+              type: NodePort
+        containerPorts:
+          client:
+            enabled: true
+          mqtt:
+            enabled: true
+          monitor:
+            enabled: true
+          leafnodes:
+            enabled: true
+        reloader:
+          enabled: true
+          image:
+            repository: natsio/nats-server-config-reloader
+            tag: "0.15.1"
+        promExporter:
+          enabled: true
+          image:
+            repository: natsio/prometheus-nats-exporter
+            tag: "0.15.0"
+          port: 7777
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nats
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

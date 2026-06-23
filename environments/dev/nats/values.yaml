@@ -1,0 +1,111 @@
+# NATS — Dev / Minikube
+# Chart: nats/nats  version: 2.14.2  NATS: 2.14.2
+# Features: JetStream (persistence) + MQTT (IoT device support) + Leaf Node (DR sync)
+
+config:
+  # ── JetStream — persistent messaging ──────────────────────────────────────
+  # JetStream = NATS's persistence layer
+  # Without it: fire-and-forget pub/sub only (messages lost if no subscriber)
+  # With it:    durable streams, replay, acknowledgements, exactly-once delivery
+  jetstream:
+    enabled: true
+    fileStore:
+      enabled: true
+      dir: /data
+      pvc:
+        enabled: true
+        size: 5Gi
+        storageClassName: standard   # Minikube default StorageClass
+    memoryStore:
+      enabled: true
+      maxSize: 256Mi
+
+  # ── MQTT — IoT / bus device connectivity ──────────────────────────────────
+  # MQTT is the protocol used by GPS trackers, ticket validators, passenger
+  # counters, and other IoT devices on the bus.
+  # Devices publish to MQTT → NATS bridges to JetStream subjects automatically
+  #
+  # MQTT topic → NATS subject mapping:
+  #   MQTT: ebus/gps/BUS001        → NATS: $MQTT.ebus.gps.BUS001
+  #   MQTT: ebus/ticket/validate   → NATS: $MQTT.ebus.ticket.validate
+  #   MQTT: ebus/passenger/count   → NATS: $MQTT.ebus.passenger.count
+  mqtt:
+    enabled: true
+    port: 1883
+    # JetStream stream that stores MQTT messages durably
+    streamReplicas: 1
+
+  # ── Cluster — single node for dev ─────────────────────────────────────────
+  cluster:
+    enabled: false    # single node sufficient for dev/PoC
+
+  # ── Leaf Node — DR sync to EKS NATS ───────────────────────────────────────
+  # Leaf Node = NATS's built-in DR/remote sync mechanism
+  # DC NATS connects OUT to DR NATS as a leaf node
+  # All messages published locally are automatically forwarded to DR
+  # On failover: apps point to DR NATS — all messages already there
+  #
+  # To enable: uncomment and replace with actual EKS NATS URL
+  # leafnodes:
+  #   enabled: true
+  #   remotes:
+  #     - url: nats://ebus-nats-dr.eks.internal:7422
+  #       credentials:
+  #         secret:
+  #           name: nats-dr-credentials
+  #           key: creds
+
+  # ── Monitoring ─────────────────────────────────────────────────────────────
+  monitor:
+    enabled: true
+    port: 8222
+
+# ── Container image ──────────────────────────────────────────────────────────
+container:
+  image:
+    repository: nats
+    tag: "2.11-alpine"
+  merge:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# ── Services ─────────────────────────────────────────────────────────────────
+service:
+  merge:
+    spec:
+      type: NodePort
+
+# ── Expose ports ─────────────────────────────────────────────────────────────
+# NATS client:  4222
+# MQTT:         1883  ← IoT devices connect here
+# Monitor UI:   8222
+# Leaf Node:    7422  ← DR sync port
+containerPorts:
+  client:
+    enabled: true
+  mqtt:
+    enabled: true
+  monitor:
+    enabled: true
+  leafnodes:
+    enabled: true
+
+# ── Reloader — hot reload config without restart ──────────────────────────────
+reloader:
+  enabled: true
+  image:
+    repository: natsio/nats-server-config-reloader
+    tag: "0.15.1"
+
+# ── Prometheus exporter ───────────────────────────────────────────────────────
+promExporter:
+  enabled: true
+  image:
+    repository: natsio/prometheus-nats-exporter
+    tag: "0.15.0"
+  port: 7777

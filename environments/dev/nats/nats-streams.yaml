@@ -1,0 +1,71 @@
+# NATS JetStream Streams — PM-eBus ITMS
+# Applied after NATS is running via nats CLI or NATS controller
+# These are documented here for reference; actual creation via init job below
+---
+# Init Job — creates JetStream streams on first boot
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nats-stream-init
+  namespace: nats
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: nats-cli
+          image: natsio/nats-box:0.14.5
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for NATS..."
+              until nats -s nats://nats.nats.svc.cluster.local:4222 server ping 2>/dev/null; do sleep 3; done
+
+              echo "Creating JetStream streams..."
+
+              # GPS Tracking stream — high throughput, short retention
+              nats -s nats://nats.nats.svc.cluster.local:4222 stream add EBUS_GPS \
+                --subjects "ebus.gps.>" \
+                --storage file \
+                --replicas 1 \
+                --retention limits \
+                --max-age 24h \
+                --max-msgs-per-subject 1000 \
+                --discard old \
+                --dupe-window 2m \
+                --defaults 2>/dev/null || echo "EBUS_GPS already exists"
+
+              # Ticket events — medium retention, exactly-once needed
+              nats -s nats://nats.nats.svc.cluster.local:4222 stream add EBUS_TICKETS \
+                --subjects "ebus.ticket.>" \
+                --storage file \
+                --replicas 1 \
+                --retention limits \
+                --max-age 168h \
+                --discard old \
+                --defaults 2>/dev/null || echo "EBUS_TICKETS already exists"
+
+              # Alerts — low volume, long retention for audit
+              nats -s nats://nats.nats.svc.cluster.local:4222 stream add EBUS_ALERTS \
+                --subjects "ebus.alerts.>" \
+                --storage file \
+                --replicas 1 \
+                --retention limits \
+                --max-age 720h \
+                --defaults 2>/dev/null || echo "EBUS_ALERTS already exists"
+
+              # Passenger count — aggregated IoT data from MQTT devices
+              nats -s nats://nats.nats.svc.cluster.local:4222 stream add EBUS_PASSENGERS \
+                --subjects "ebus.passenger.>" \
+                --storage file \
+                --replicas 1 \
+                --retention limits \
+                --max-age 168h \
+                --defaults 2>/dev/null || echo "EBUS_PASSENGERS already exists"
+
+              echo "All streams created."
+              nats -s nats://nats.nats.svc.cluster.local:4222 stream list

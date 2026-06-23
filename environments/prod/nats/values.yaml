@@ -1,0 +1,62 @@
+# NATS — Production EKS
+# 3-node cluster + JetStream + MQTT + Leaf Node DR sync
+
+config:
+  jetstream:
+    enabled: true
+    fileStore:
+      enabled: true
+      dir: /data
+      pvc:
+        enabled: true
+        size: 50Gi
+        storageClassName: gp3
+    memoryStore:
+      enabled: true
+      maxSize: 1Gi
+
+  mqtt:
+    enabled: true
+    port: 1883
+
+  cluster:
+    enabled: true
+    replicas: 3
+    name: ebus-nats-dc
+
+  # Leaf Node — connects DC NATS to DR NATS
+  # All messages auto-forwarded to DR — zero RPO (recovery point objective)
+  # On failover: flip app config to DR NATS URL — messages already there
+  leafnodes:
+    enabled: true
+    port: 7422
+    remotes:
+      - url: nats://ebus-nats-dr.eks.internal:7422
+        credentials:
+          secret:
+            name: nats-dr-credentials
+            key: creds
+
+  monitor:
+    enabled: true
+    port: 8222
+
+container:
+  image:
+    repository: nats
+    tag: "2.11-alpine"
+  merge:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+reloader:
+  enabled: true
+
+promExporter:
+  enabled: true
+  port: 7777

@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafka-cluster-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"    # cluster after operator
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/sachinkhosla-DevOps/pm-ebus-infra
+    targetRevision: main
+    path: environments/dev/kafka
+    directory:
+      include: "kafka-cluster.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kafka
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+  ignoreDifferences:
+    - group: kafka.strimzi.io
+      kind: Kafka
+      jsonPointers:
+        - /status

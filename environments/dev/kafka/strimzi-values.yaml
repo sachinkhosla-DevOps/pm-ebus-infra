@@ -1,0 +1,19 @@
+# Strimzi Kafka Operator — Dev / Minikube
+# Chart: strimzi/strimzi-kafka-operator  version: 1.0.1
+# Watches: kafka namespace only (narrowed for dev)
+
+watchNamespaces:
+  - kafka
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 384Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+logLevel: INFO
+
+# Don't install CRDs via Helm — apply separately to avoid timeout
+createGlobalResources: true

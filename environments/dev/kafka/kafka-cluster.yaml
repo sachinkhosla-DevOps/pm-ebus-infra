@@ -1,0 +1,146 @@
+# Kafka Cluster — Dev (single-node, KRaft mode — no ZooKeeper needed)
+# KRaft = Kafka Raft — Kafka 3.x built-in consensus, no ZooKeeper dependency
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: ebus-kafka
+spec:
+  replicas: 1
+  roles:
+    - controller   # cluster metadata management (replaces ZooKeeper)
+    - broker       # message storage and serving
+  storage:
+    type: persistent-claim
+    size: 10Gi
+    deleteClaim: false
+  resources:
+    requests:
+      cpu: 300m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: ebus-kafka
+  namespace: kafka
+  annotations:
+    # KRaft mode — no ZooKeeper
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    version: "3.9.0"
+    metadataVersion: "3.9-IV0"
+    replicas: 1
+
+    listeners:
+      # Internal listener — for apps inside the cluster
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      # External listener — for tools outside K8s (NodePort)
+      - name: external
+        port: 9094
+        type: nodeport
+        tls: false
+        configuration:
+          bootstrap:
+            nodePort: 30092
+
+    config:
+      offsets.topic.replication.factor: "1"
+      transaction.state.log.replication.factor: "1"
+      transaction.state.log.min.isr: "1"
+      default.replication.factor: "1"
+      min.insync.replicas: "1"
+      # Retention — keep 7 days or 10GB per topic
+      log.retention.hours: "168"
+      log.retention.bytes: "10737418240"
+      log.segment.bytes: "1073741824"
+      # Performance tuning for dev
+      num.partitions: "3"
+      num.recovery.threads.per.data.dir: "1"
+      # Allow auto topic creation (disable in prod)
+      auto.create.topics.enable: "true"
+
+    # PM-eBus ITMS default topics
+    # These are created at boot — no manual kafka-topics.sh needed
+  entityOperator:
+    topicOperator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+    userOperator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+---
+# PM-eBus ITMS Kafka Topics — managed declaratively via KafkaTopic CRD
+# Argo CD syncs these — add a topic here, it gets created automatically
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: ebus-gps-tracking
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: ebus-kafka
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: "604800000"    # 7 days
+    segment.bytes: "1073741824"
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: ebus-ticket-events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: ebus-kafka
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: ebus-passenger-count
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: ebus-kafka
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: ebus-alerts
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: ebus-kafka
+spec:
+  partitions: 1
+  replicas: 1
+  config:
+    retention.ms: "86400000"     # 1 day — alerts are time-sensitive

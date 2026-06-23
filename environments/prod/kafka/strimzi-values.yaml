@@ -1,0 +1,13 @@
+# Strimzi Kafka Operator — Production EKS
+watchNamespaces:
+  - kafka
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+logLevel: WARN
