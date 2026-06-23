@@ -1,0 +1,180 @@
+# Valkey Production Values — EKS
+# Chart: bitnami/valkey  version: 6.x
+# Docs: https://github.com/bitnami/charts/tree/main/bitnami/valkey
+
+# ── Architecture ──────────────────────────────────────────────────────────────
+# sentinel: Valkey Sentinel monitors nodes and auto-promotes a Replica
+# to Primary if Primary goes down — no manual intervention needed
+architecture: replication
+
+# ── Authentication ────────────────────────────────────────────────────────────
+auth:
+  enabled: true
+  sentinel: true
+  # Password pulled from Kubernetes Secret (created separately via Secrets Manager)
+  # kubectl create secret generic valkey-auth --from-literal=password='STRONG_RANDOM_PW' -n valkey
+  existingSecret: valkey-auth
+  existingSecretPasswordKey: password
+
+# ── Primary node ──────────────────────────────────────────────────────────────
+primary:
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+  persistence:
+    enabled: true
+    storageClass: gp3
+    size: 20Gi
+
+  # Save snapshot every 900s if 1 key changed, every 300s if 10 keys changed
+  configuration: |
+    save 900 1
+    save 300 10
+    save 60 10000
+    maxmemory 3gb
+    maxmemory-policy allkeys-lru
+    lazyfree-lazy-eviction yes
+    lazyfree-lazy-expire yes
+    lazyfree-lazy-server-del yes
+    appendonly yes
+    appendfsync everysec
+    no-appendfsync-on-rewrite yes
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+
+  # Spread across AZs — never 2 primaries on same node
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: primary
+          topologyKey: kubernetes.io/hostname
+
+  nodeSelector:
+    role: cache                 # dedicated cache node group in EKS
+
+# ── Replica nodes ─────────────────────────────────────────────────────────────
+replica:
+  replicaCount: 2              # 2 replicas — 1 Primary + 2 Replicas total
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  persistence:
+    enabled: true
+    storageClass: gp3
+    size: 20Gi
+
+  # Each replica on a different node
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: replica
+          topologyKey: kubernetes.io/hostname
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  nodeSelector:
+    role: cache
+
+# ── Sentinel — auto-failover ──────────────────────────────────────────────────
+sentinel:
+  enabled: true
+  quorum: 2                    # 2 of 3 Sentinels must agree before failover
+  downAfterMilliseconds: 5000  # declare primary down after 5s of no response
+  failoverTimeout: 30000       # failover must complete in 30s
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# ── TLS ───────────────────────────────────────────────────────────────────────
+tls:
+  enabled: true
+  authClients: false           # apps don't need client certs, just server TLS
+  existingSecret: valkey-tls   # created by cert-manager (see tls.yaml)
+  certFilename: tls.crt
+  certKeyFilename: tls.key
+  caCertFilename: ca.crt
+
+# ── Metrics — Prometheus ──────────────────────────────────────────────────────
+metrics:
+  enabled: true
+  image:
+    repository: bitnami/valkey-exporter
+    tag: latest
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  serviceMonitor:
+    enabled: true              # auto-discovered by Prometheus Operator
+    namespace: monitoring
+    interval: 30s
+  prometheusRule:
+    enabled: true
+    namespace: monitoring
+    rules:
+      # Alert if Primary is down
+      - alert: ValkeyPrimaryDown
+        expr: valkey_up{role="primary"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Valkey Primary is down in {{ $labels.namespace }}"
+      # Alert if memory > 90%
+      - alert: ValkeyHighMemory
+        expr: valkey_memory_used_bytes / valkey_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Valkey memory > 90% on {{ $labels.instance }}"
+
+# ── Network Policy — only allow from app namespaces ──────────────────────────
+networkPolicy:
+  enabled: true
+  allowExternal: false
+  ingressNSMatchLabels:
+    kubernetes.io/metadata.name: app-namespace   # replace with your app namespace
+
+# ── Pod Disruption Budget ─────────────────────────────────────────────────────
+pdb:
+  create: true
+  minAvailable: 1
+
+# ── AWS NLB for external access ───────────────────────────────────────────────
+service:
+  type: ClusterIP              # internal only by default
+  # To expose externally, change to LoadBalancer and add annotations:
+  # type: LoadBalancer
+  # annotations:
+  #   service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+  #   service.beta.kubernetes.io/aws-load-balancer-internal: "true"

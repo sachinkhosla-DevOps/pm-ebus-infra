@@ -1,0 +1,62 @@
+# WAL-G configuration — continuous WAL archiving + nightly base backup to S3
+# Docs: https://github.com/wal-g/wal-g
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: walg-config
+  namespace: patroni
+data:
+  walg.json: |
+    {
+      "WALG_S3_PREFIX":        "s3://pm-ebus-db-backups/patroni/prod",
+      "AWS_REGION":            "ap-south-1",
+      "WALG_COMPRESSION_METHOD": "brotli",
+      "WALG_DELTA_MAX_STEPS":  "6",
+      "WALG_RETAIN_FULL_BACKUPS": "7",
+      "PGHOST":                "localhost",
+      "PGPORT":                "5432",
+      "PGUSER":                "postgres",
+      "PGDATABASE":            "postgres"
+    }
+---
+# CronJob: nightly base backup at 1am IST
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: patroni-base-backup
+  namespace: patroni
+spec:
+  schedule: "30 19 * * *"    # 19:30 UTC = 01:00 IST
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: patroni-backup-sa
+          containers:
+            - name: walg-backup
+              image: ghcr.io/wal-g/wal-g:v3.0.0-pg16
+              command:
+                - wal-g
+                - backup-push
+                - /home/postgres/pgdata
+              env:
+                - name: WALG_S3_PREFIX
+                  value: "s3://pm-ebus-db-backups/patroni/prod"
+                - name: AWS_REGION
+                  value: "ap-south-1"
+                - name: PGHOST
+                  value: "patroni-cluster.patroni.svc.cluster.local"
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres.patroni-cluster.credentials.postgresql.acid.zalan.do
+                      key: password
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi

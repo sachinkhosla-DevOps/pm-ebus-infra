@@ -1,0 +1,41 @@
+# cert-manager issues TLS certificates automatically
+# Prerequisite: cert-manager installed on EKS cluster
+# Install: helm install cert-manager jetstack/cert-manager --set installCRDs=true
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: patroni-tls
+  namespace: patroni
+spec:
+  secretName: patroni-tls
+  duration: 8760h       # 1 year
+  renewBefore: 720h     # renew 30 days before expiry (auto)
+  commonName: patroni-cluster.patroni.svc.cluster.local
+  dnsNames:
+    - patroni-cluster.patroni.svc.cluster.local
+    - patroni-cluster-repl.patroni.svc.cluster.local
+    - "*.patroni.svc.cluster.local"
+  issuerRef:
+    name: patroni-ca-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: patroni-ca-issuer
+  namespace: patroni
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: patroni-ca
+  namespace: patroni
+spec:
+  isCA: true
+  secretName: patroni-ca
+  commonName: patroni-ca
+  issuerRef:
+    name: patroni-ca-issuer
+    kind: Issuer

@@ -1,19 +1,22 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: patroni
+  name: pgbouncer-prod
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "3"    # deploy after patroni (wave 1)
 spec:
-  project: default
+  project: prod
+
   source:
     repoURL: https://github.com/sachinkhosla-DevOps/pm-ebus-infra
     targetRevision: main
-    path: patroni
+    path: environments/prod/pgbouncer
+
   destination:
-    server: https://kubernetes.default.svc
+    server: https://YOUR-EKS-API-ENDPOINT.gr7.ap-south-1.eks.amazonaws.com
     namespace: patroni
+
   syncPolicy:
     automated:
       prune: true

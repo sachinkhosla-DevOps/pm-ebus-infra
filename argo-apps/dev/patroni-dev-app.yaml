@@ -1,25 +1,24 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: valkey
+  name: patroni-dev
   namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
 spec:
   project: default
+
   source:
     repoURL: https://github.com/sachinkhosla-DevOps/pm-ebus-infra
     targetRevision: main
-    path: valkey
-    helm:
-      valueFiles:
-        - values.yaml
+    path: environments/dev/patroni
+
   destination:
-    server: https://kubernetes.default.svc
-    namespace: valkey
+    server: https://kubernetes.default.svc    # local Minikube
+    namespace: patroni
+
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - ServerSideApply=true

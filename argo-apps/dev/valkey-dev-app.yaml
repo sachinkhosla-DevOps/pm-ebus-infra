@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: valkey-dev
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://charts.bitnami.com/bitnami
+    chart: valkey
+    targetRevision: 6.1.9
+    helm:
+      values: |
+        auth:
+          enabled: true
+          password: ebus@Valkey2026
+        primary:
+          persistence:
+            enabled: true
+            size: 2Gi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+        replica:
+          replicaCount: 1
+          persistence:
+            enabled: true
+            size: 2Gi
+
+  destination:
+    server: https://kubernetes.default.svc    # local Minikube
+    namespace: valkey
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

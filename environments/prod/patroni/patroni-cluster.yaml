@@ -1,0 +1,141 @@
+apiVersion: acid.zalan.do/v1
+kind: postgresql
+metadata:
+  name: patroni-cluster
+  namespace: patroni
+  labels:
+    environment: production
+    team: ebus
+spec:
+  teamId: "ebus"
+
+  # ── Cluster size ──────────────────────────────────────────────────────────
+  numberOfInstances: 3          # 1 Leader + 2 Replicas for production HA
+
+  # ── Storage ───────────────────────────────────────────────────────────────
+  volume:
+    size: 500Gi
+    storageClass: gp3            # AWS EBS gp3 — faster + cheaper than gp2
+
+  # ── PostgreSQL version & tuning ───────────────────────────────────────────
+  postgresql:
+    version: "16"
+    parameters:
+      # Replication — required for DR logical replication
+      wal_level: logical
+      max_replication_slots: "20"
+      max_wal_senders: "20"
+
+      # Memory tuning (sized for 16Gi pod memory)
+      shared_buffers: "4GB"           # 25% of RAM
+      effective_cache_size: "12GB"    # 75% of RAM
+      work_mem: "64MB"
+      maintenance_work_mem: "1GB"
+      wal_buffers: "64MB"
+
+      # Connection & performance
+      max_connections: "500"
+      checkpoint_completion_target: "0.9"
+      random_page_cost: "1.1"         # SSD-optimised
+      effective_io_concurrency: "200" # SSD-optimised
+      min_wal_size: "2GB"
+      max_wal_size: "8GB"
+
+      # Logging
+      log_min_duration_statement: "1000"   # log queries slower than 1s
+      log_checkpoints: "on"
+      log_connections: "on"
+      log_disconnections: "on"
+      log_lock_waits: "on"
+      log_temp_files: "0"
+      log_autovacuum_min_duration: "0"
+
+  # ── Resources ─────────────────────────────────────────────────────────────
+  resources:
+    requests:
+      cpu: 2000m       # 2 cores guaranteed
+      memory: 8Gi
+    limits:
+      cpu: 4000m       # burst to 4 cores
+      memory: 16Gi
+
+  # ── TLS ───────────────────────────────────────────────────────────────────
+  tls:
+    secretName: patroni-tls            # created by cert-manager (see tls.yaml)
+    caSecretName: patroni-ca
+    caFile: ca.crt
+
+  # ── Backup via WAL-G to S3 ────────────────────────────────────────────────
+  # WAL-G backs up WAL continuously + base backup nightly
+  additionalVolumes:
+    - name: walg-config
+      mountPath: /etc/walg
+      configMap:
+        name: walg-config
+
+  patroni:
+    initdb:
+      encoding: "UTF8"
+      locale: "en_US.UTF-8"
+      data-checksums: "true"           # detect silent data corruption
+
+    pg_hba:
+      - host all all 10.0.0.0/8 md5                    # VPC internal
+      - hostssl replication standby 10.0.0.0/8 md5     # streaming replication
+      - hostssl all all 0.0.0.0/0 md5                  # external TLS only
+
+    slots:
+      ebus_dr_slot:
+        type: logical
+        plugin: pgoutput
+
+    synchronous_mode: true             # at least 1 replica confirmed before commit
+    synchronous_mode_strict: false     # don't block if replica is down
+
+  # ── AWS NLB — expose PostgreSQL externally ────────────────────────────────
+  enableMasterLoadBalancer: true
+  enableReplicaLoadBalancer: true
+  allowedSourceRanges:
+    - "10.0.0.0/8"                     # VPC CIDR — tighten per environment
+  masterServiceAnnotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+  replicaServiceAnnotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+
+  # ── Node placement ────────────────────────────────────────────────────────
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: role
+              operator: In
+              values:
+                - database              # dedicated DB node group in EKS
+  podAntiAffinity: "required"           # never put 2 Patroni pods on same node
+
+  # ── Pod disruption budget ─────────────────────────────────────────────────
+  podDistruptionBudget:
+    enabled: true
+    minAvailable: 2                     # always keep 2 of 3 nodes up
+
+  # ── Monitoring ────────────────────────────────────────────────────────────
+  sidecars:
+    - name: postgres-exporter
+      image: prometheuscommunity/postgres-exporter:v0.15.0
+      ports:
+        - name: metrics
+          containerPort: 9187
+          protocol: TCP
+      env:
+        - name: DATA_SOURCE_NAME
+          value: "postgresql://postgres@localhost:5432/postgres?sslmode=disable"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi

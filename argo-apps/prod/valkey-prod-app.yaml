@@ -1,0 +1,47 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: valkey-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: devops-alerts
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: devops-alerts
+spec:
+  project: prod
+
+  source:
+    repoURL: https://charts.bitnami.com/bitnami
+    chart: valkey
+    targetRevision: 6.1.9
+    helm:
+      valueFiles:
+        - values.yaml
+      # Override specific values without changing values.yaml
+      # Useful for secrets that shouldn't be in Git
+      parameters:
+        - name: auth.existingSecret
+          value: valkey-auth
+
+  destination:
+    server: https://YOUR-EKS-API-ENDPOINT.gr7.ap-south-1.eks.amazonaws.com
+    namespace: valkey
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates

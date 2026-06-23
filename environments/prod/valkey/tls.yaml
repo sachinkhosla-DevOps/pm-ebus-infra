@@ -1,0 +1,28 @@
+# cert-manager issues TLS cert for Valkey automatically
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: valkey-tls
+  namespace: valkey
+spec:
+  secretName: valkey-tls
+  duration: 8760h
+  renewBefore: 720h
+  commonName: valkey.valkey.svc.cluster.local
+  dnsNames:
+    - valkey.valkey.svc.cluster.local
+    - valkey-primary.valkey.svc.cluster.local
+    - valkey-replicas.valkey.svc.cluster.local
+    - valkey-headless.valkey.svc.cluster.local
+    - "*.valkey.svc.cluster.local"
+  issuerRef:
+    name: valkey-ca-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: valkey-ca-issuer
+  namespace: valkey
+spec:
+  selfSigned: {}

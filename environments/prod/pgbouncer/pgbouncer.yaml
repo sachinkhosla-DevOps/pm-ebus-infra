@@ -1,0 +1,103 @@
+# PgBouncer — Connection Pooler for PostgreSQL
+# Without this, 500 app connections hit Postgres directly — kills performance
+# With PgBouncer: apps connect to PgBouncer, it maintains a small pool to Postgres
+#
+# Flow: App (thousands of connections) → PgBouncer (50 real DB connections) → Patroni
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: patroni
+  labels:
+    app: pgbouncer
+spec:
+  replicas: 2                    # 2 PgBouncer pods for HA
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      containers:
+        - name: pgbouncer
+          image: bitnami/pgbouncer:1.23.1
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRESQL_HOST
+              value: "patroni-cluster.patroni.svc.cluster.local"
+            - name: POSTGRESQL_PORT
+              value: "5432"
+            - name: PGBOUNCER_DATABASE
+              value: "db_pm_ebus"
+            - name: PGBOUNCER_POOL_MODE
+              value: "transaction"         # best for web apps
+            - name: PGBOUNCER_MAX_CLIENT_CONN
+              value: "2000"               # max app-side connections
+            - name: PGBOUNCER_DEFAULT_POOL_SIZE
+              value: "50"                 # real connections to Postgres
+            - name: PGBOUNCER_MIN_POOL_SIZE
+              value: "10"
+            - name: PGBOUNCER_RESERVE_POOL_SIZE
+              value: "10"
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres.patroni-cluster.credentials.postgresql.acid.zalan.do
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: patroni
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+spec:
+  type: LoadBalancer
+  selector:
+    app: pgbouncer
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+# HorizontalPodAutoscaler — scale PgBouncer when connections spike
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pgbouncer-hpa
+  namespace: patroni
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pgbouncer
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

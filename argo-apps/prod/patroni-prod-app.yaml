@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: patroni-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # Notifications — alert on sync failure (requires Argo CD Notifications)
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: devops-alerts
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: devops-alerts
+spec:
+  project: prod                          # separate Argo CD project with restricted permissions
+
+  source:
+    repoURL: https://github.com/sachinkhosla-DevOps/pm-ebus-infra
+    targetRevision: main
+    path: environments/prod/patroni      # points to production folder
+
+  destination:
+    # Replace this with your EKS cluster API endpoint
+    # Get it with: aws eks describe-cluster --name pm-ebus-prod --query "cluster.endpoint"
+    server: https://YOUR-EKS-API-ENDPOINT.gr7.ap-south-1.eks.amazonaws.com
+    namespace: patroni
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true       # required for large CRDs like Zalando postgres CRD
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+
+  # Ignore fields that change at runtime (patroni updates these automatically)
+  ignoreDifferences:
+    - group: acid.zalan.do
+      kind: postgresql
+      jsonPointers:
+        - /status
+        - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
