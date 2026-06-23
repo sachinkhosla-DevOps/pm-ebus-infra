@@ -1,0 +1,123 @@
+# Kong Ingress Routes — All platform tools behind Kong gateway
+# Traffic flow: Client → Kong (30085) → Service
+# Add annotation konghq.com/plugins to attach plugins per route
+---
+# Argo CD — http://KONG:30085/argocd
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-ingress
+  namespace: argocd
+  annotations:
+    kubernetes.io/ingress.class: kong
+    konghq.com/strip-path: "true"
+    konghq.com/plugins: cors-argocd
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /argocd
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+---
+# Argo Workflows — http://KONG:30085/workflows
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argo-workflows-ingress
+  namespace: argo
+  annotations:
+    kubernetes.io/ingress.class: kong
+    konghq.com/strip-path: "true"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /workflows
+            pathType: Prefix
+            backend:
+              service:
+                name: argo-server
+                port:
+                  number: 2746
+---
+# Valkey metrics (read-only probe endpoint) — not exposed via Kong intentionally
+# Valkey is a backend service — apps connect directly via ClusterIP
+# Exposing cache externally is a security risk
+#
+# Kong rate-limiting plugin uses Valkey as its counter store:
+#   valkey-primary.valkey.svc.cluster.local:6379
+---
+# Patroni — Admin/metrics only (DB should never be exposed via HTTP gateway)
+# Applications connect to Patroni directly via:
+#   patroni-cluster.patroni.svc.cluster.local:5432
+# Kong is used as the HTTP/API gateway, not TCP proxy
+# For TCP proxying of PostgreSQL, use AWS NLB directly (prod) or port-forward (dev)
+---
+# Kong Manager UI — accessible directly on :30082, also via Kong proxy
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kong-manager-ingress
+  namespace: kong
+  annotations:
+    kubernetes.io/ingress.class: kong
+    konghq.com/strip-path: "true"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /kong-manager
+            pathType: Prefix
+            backend:
+              service:
+                name: kong-dev-kong-manager
+                port:
+                  number: 8002
+---
+# KongPlugin — CORS for Argo CD (needed because Argo CD UI makes XHR calls)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: cors-argocd
+  namespace: argocd
+plugin: cors
+config:
+  origins:
+    - "*"
+  methods:
+    - GET
+    - POST
+    - PUT
+    - PATCH
+    - DELETE
+    - OPTIONS
+  headers:
+    - Accept
+    - Authorization
+    - Content-Type
+    - X-Request-ID
+    - Grpc-Metadata-content-type
+  credentials: true
+  max_age: 3600
+---
+# KongPlugin — Global rate limiting (applied to all routes)
+apiVersion: configuration.konghq.com/v1
+kind: KongClusterPlugin
+metadata:
+  name: global-rate-limit
+  annotations:
+    kubernetes.io/ingress.class: kong
+  labels:
+    global: "true"
+plugin: rate-limiting
+config:
+  minute: 300
+  hour: 10000
+  policy: local
+  fault_tolerant: true
+  hide_client_headers: false
