@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kong-plugins-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"    # after kong is running (wave 3)
+spec:
+  project: prod
+
+  source:
+    repoURL: https://github.com/sachinkhosla-DevOps/pm-ebus-infra
+    targetRevision: main
+    path: environments/prod/kong
+    directory:
+      include: "kong-plugins.yaml"
+
+  destination:
+    server: https://YOUR-EKS-API-ENDPOINT.gr7.ap-south-1.eks.amazonaws.com
+    namespace: kong
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kong-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: devops-alerts
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: devops-alerts
+spec:
+  project: prod
+
+  sources:
+    # Source 1: Helm chart
+    - repoURL: https://charts.konghq.com
+      chart: kong
+      targetRevision: 3.4.0
+      helm:
+        valueFiles:
+          - $values/environments/prod/kong/values.yaml
+    # Source 2: values from Git
+    - repoURL: https://github.com/sachinkhosla-DevOps/pm-ebus-infra
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://YOUR-EKS-API-ENDPOINT.gr7.ap-south-1.eks.amazonaws.com
+    namespace: kong
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas    # managed by HPA — ignore drift on replica count

@@ -1,0 +1,112 @@
+# Kong KongPlugin CRDs — applied cluster-wide via Argo CD
+# These define plugins that can be referenced by Ingress annotations:
+#   konghq.com/plugins: rate-limiting-global,jwt-auth
+---
+# Rate limiting — 1000 req/min per consumer, 10000/hour
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limiting-global
+  namespace: kong
+  annotations:
+    kubernetes.io/ingress.class: kong
+plugin: rate-limiting
+config:
+  minute: 1000
+  hour: 10000
+  policy: redis                        # store counters in Valkey/Redis
+  redis_host: valkey-primary.valkey.svc.cluster.local
+  redis_port: 6379
+  redis_password: ""                   # set via secret in prod
+  fault_tolerant: true                 # don't block requests if Valkey is down
+---
+# JWT Authentication
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: jwt-auth
+  namespace: kong
+plugin: jwt
+config:
+  key_claim_name: kid
+  claims_to_verify:
+    - exp
+  maximum_expiration: 86400            # 24 hours max token lifetime
+---
+# Request transformer — inject headers before forwarding to backend
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: request-transformer
+  namespace: kong
+plugin: request-transformer
+config:
+  add:
+    headers:
+      - "X-Forwarded-By: kong-gateway"
+      - "X-Environment: production"
+---
+# Response transformer — strip internal headers from responses
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: response-transformer
+  namespace: kong
+plugin: response-transformer
+config:
+  remove:
+    headers:
+      - X-Powered-By
+      - Server
+---
+# CORS
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: cors
+  namespace: kong
+plugin: cors
+config:
+  origins:
+    - "https://ebus.orahi.com"          # replace with actual frontend domain
+    - "https://admin.ebus.orahi.com"
+  methods:
+    - GET
+    - POST
+    - PUT
+    - PATCH
+    - DELETE
+    - OPTIONS
+  headers:
+    - Accept
+    - Authorization
+    - Content-Type
+    - X-Request-ID
+  credentials: true
+  max_age: 3600
+---
+# Prometheus metrics per route
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: prometheus-metrics
+  namespace: kong
+plugin: prometheus
+config:
+  per_consumer: true
+  status_code_metrics: true
+  latency_metrics: true
+  bandwidth_metrics: true
+  upstream_health_metrics: true
+---
+# IP restriction — block traffic outside VPC (defence in depth)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: ip-restriction
+  namespace: kong
+plugin: ip-restriction
+config:
+  allow:
+    - 10.0.0.0/8             # AWS VPC CIDR
+    - 172.16.0.0/12          # office network range

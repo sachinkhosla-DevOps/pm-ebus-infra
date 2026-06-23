@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kong-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"    # after patroni(1) and valkey(2)
+spec:
+  project: default
+
+  sources:
+    # Source 1: Helm chart from Kong repo
+    - repoURL: https://charts.konghq.com
+      chart: kong
+      targetRevision: 3.4.0
+      helm:
+        valueFiles:
+          - $values/environments/dev/kong/values.yaml
+    # Source 2: values.yaml from our Git repo
+    - repoURL: https://github.com/sachinkhosla-DevOps/pm-ebus-infra
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kong
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

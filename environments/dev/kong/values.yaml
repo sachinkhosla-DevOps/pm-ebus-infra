@@ -1,0 +1,108 @@
+# Kong API Gateway — Dev / Minikube values
+# Chart: kong/kong  version: 3.4.0  Kong: 3.9
+# Mode: DB-less (declarative config) — no PostgreSQL needed for dev
+
+# ── Deployment mode ───────────────────────────────────────────────────────────
+# DB-less: Kong reads config from a ConfigMap (no DB required)
+# Simpler for dev/PoC — just edit the configmap and Kong hot-reloads
+env:
+  database: "off"
+  nginx_worker_processes: "1"
+  proxy_access_log: /dev/stdout
+  admin_access_log: /dev/stdout
+  admin_gui_access_log: /dev/stdout
+  portal_api_access_log: /dev/stdout
+  proxy_error_log: /dev/stderr
+  admin_error_log: /dev/stderr
+
+# ── Declarative config (DB-less) ──────────────────────────────────────────────
+# All routes, services, plugins defined here — no Admin API writes needed
+dblessConfig:
+  configMap: kong-config          # see kong-config.yaml
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+image:
+  repository: kong
+  tag: "3.9"
+  pullPolicy: IfNotPresent
+
+# ── Replicas ──────────────────────────────────────────────────────────────────
+replicaCount: 1
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# ── Proxy (main gateway traffic) ──────────────────────────────────────────────
+proxy:
+  enabled: true
+  type: NodePort
+  http:
+    enabled: true
+    servicePort: 80
+    containerPort: 8000
+    nodePort: 30080        # access at http://192.168.1.31:30080
+  tls:
+    enabled: false         # no TLS in dev
+  annotations: {}
+
+# ── Admin API ─────────────────────────────────────────────────────────────────
+admin:
+  enabled: true
+  type: NodePort
+  http:
+    enabled: true
+    servicePort: 8001
+    containerPort: 8001
+    nodePort: 30081        # access at http://192.168.1.31:30081
+  tls:
+    enabled: false
+
+# ── Kong Manager (Web UI) ─────────────────────────────────────────────────────
+manager:
+  enabled: true
+  type: NodePort
+  http:
+    enabled: true
+    servicePort: 8002
+    containerPort: 8002
+    nodePort: 30082        # access at http://192.168.1.31:30082
+
+# ── Ingress Controller (KIC) ──────────────────────────────────────────────────
+# Makes Kong work as a Kubernetes Ingress controller
+# Apps can use standard Ingress YAML with Kong annotations
+ingressController:
+  enabled: true
+  installCRDs: false       # CRDs installed separately to avoid Helm conflicts
+  env:
+    controller_kong_admin_tls_skip_verify: true
+
+# ── Database ──────────────────────────────────────────────────────────────────
+postgresql:
+  enabled: false           # DB-less mode — no Postgres needed
+
+# ── Persistence ───────────────────────────────────────────────────────────────
+persistence:
+  enabled: false           # DB-less — nothing to persist
+
+# ── Health probes ─────────────────────────────────────────────────────────────
+readinessProbe:
+  httpGet:
+    path: /status
+    port: 8100
+    scheme: HTTP
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+livenessProbe:
+  httpGet:
+    path: /status
+    port: 8100
+    scheme: HTTP
+  initialDelaySeconds: 30
+  periodSeconds: 30

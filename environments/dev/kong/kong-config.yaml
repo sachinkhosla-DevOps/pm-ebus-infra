@@ -1,0 +1,93 @@
+# Kong Declarative Config (DB-less mode)
+# This ConfigMap defines all routes, services, and plugins for PM-eBus ITMS
+# Edit this file → push to Git → Argo CD updates Kong automatically
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-config
+  namespace: kong
+data:
+  kong.yaml: |
+    _format_version: "3.0"
+    _transform: true
+
+    # ── Services ──────────────────────────────────────────────────────────────
+    # A "service" in Kong = a backend microservice
+    services:
+
+      # PM-eBus main API backend
+      - name: ebus-api
+        url: http://ebus-api.app.svc.cluster.local:8080
+        connect_timeout: 5000
+        read_timeout: 30000
+        write_timeout: 30000
+        retries: 3
+        routes:
+          - name: ebus-api-route
+            paths:
+              - /api/v1
+            strip_path: false
+            methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+            plugins:
+              # Rate limiting per consumer
+              - name: rate-limiting
+                config:
+                  minute: 100
+                  hour: 5000
+                  policy: local
+              # Request size limit — reject payloads > 10MB
+              - name: request-size-limiting
+                config:
+                  allowed_payload_size: 10
+
+      # Health check endpoint — no auth needed
+      - name: ebus-health
+        url: http://ebus-api.app.svc.cluster.local:8080
+        routes:
+          - name: health-route
+            paths:
+              - /health
+            methods:
+              - GET
+
+    # ── Global plugins ─────────────────────────────────────────────────────────
+    plugins:
+      # CORS — allow browser requests from the frontend
+      - name: cors
+        config:
+          origins:
+            - "*"               # tighten this in production
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Request-ID
+          exposed_headers:
+            - X-Auth-Token
+          credentials: true
+          max_age: 3600
+
+      # Correlation ID — trace requests end to end
+      - name: correlation-id
+        config:
+          header_name: X-Request-ID
+          generator: uuid#counter
+          echo_downstream: true
+
+      # Request logging
+      - name: file-log
+        config:
+          path: /dev/stdout
+          reopen: false
