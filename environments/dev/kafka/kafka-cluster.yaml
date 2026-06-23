@@ -37,7 +37,6 @@ spec:
   kafka:
     version: "3.9.0"
     metadataVersion: "3.9-IV0"
-    replicas: 1
 
     listeners:
       # Internal listener — for apps inside the cluster
