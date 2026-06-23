@@ -1,7 +1,7 @@
 # Kafka Cluster — Production EKS (3-broker KRaft cluster)
 # 3 dedicated controller nodes + 3 broker nodes = high availability
 # Any single node can fail without data loss or downtime
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: controller
@@ -25,7 +25,7 @@ spec:
       cpu: 1000m
       memory: 2Gi
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: broker
@@ -58,7 +58,7 @@ spec:
                   strimzi.io/name: ebus-kafka-broker
               topologyKey: kubernetes.io/hostname    # 1 broker per node
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: ebus-kafka
@@ -120,7 +120,7 @@ spec:
     groupRegex: "ebus-.*"
 ---
 # MirrorMaker2 — DC to DR replication (prod)
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaMirrorMaker2
 metadata:
   name: ebus-mirror

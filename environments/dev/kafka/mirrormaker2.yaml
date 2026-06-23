@@ -10,7 +10,7 @@
 # IMPORTANT: DR Kafka bootstrap address below is a placeholder.
 # Replace with actual EKS Kafka bootstrap when DR cluster is deployed.
 # Until then, this resource is suspended (spec.mirrors[].sourceConnector.config.replication.factor=0)
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaMirrorMaker2
 metadata:
   name: ebus-mirror
