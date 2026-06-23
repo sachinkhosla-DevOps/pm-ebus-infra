@@ -1,19 +1,32 @@
 # Kong API Gateway — Dev / Minikube values
 # Chart: kong/kong  version: 3.4.0  Kong: 3.9
-# Mode: DB-less (declarative config via ConfigMap — no PostgreSQL needed)
-# NOTE: Values here are the reference. The Argo CD Application uses inline values
-#       because Argo CD multi-source $values reference requires Argo CD 2.6+
+# Mode: PostgreSQL-backed (uses Patroni cluster in patroni namespace)
+# DB: patroni-cluster.patroni.svc.cluster.local:5432  database: kong  user: kong
 
 env:
-  database: "off"
+  database: postgres
+  pg_host:
+    valueFrom:
+      secretKeyRef:
+        name: kong-postgres-secret
+        key: host
+  pg_port: "5432"
+  pg_database: kong
+  pg_user: kong
+  pg_password:
+    valueFrom:
+      secretKeyRef:
+        name: kong-postgres-secret
+        key: password
+  pg_ssl: "on"
+  pg_ssl_verify: "off"
   nginx_worker_processes: "1"
   proxy_access_log: /dev/stdout
   admin_access_log: /dev/stdout
+  admin_gui_access_log: /dev/stdout
   proxy_error_log: /dev/stderr
   admin_error_log: /dev/stderr
-
-dblessConfig:
-  configMap: kong-config
+  log_level: info
 
 image:
   repository: kong
@@ -29,7 +42,7 @@ resources:
     cpu: 500m
     memory: 512Mi
 
-# Proxy — main gateway traffic: http://192.168.1.31:30085
+# Proxy — http://192.168.1.31:30085  /  Cloudflare tunnel
 proxy:
   enabled: true
   type: NodePort
@@ -41,7 +54,7 @@ proxy:
   tls:
     enabled: false
 
-# Admin API — http://192.168.1.31:30081 (use only inside office network)
+# Admin API — http://192.168.1.31:30081
 admin:
   enabled: true
   type: NodePort
@@ -69,5 +82,10 @@ ingressController:
   env:
     controller_kong_admin_tls_skip_verify: true
 
+# Using external Patroni — do not deploy bundled Postgres
 postgresql:
   enabled: false
+
+migrations:
+  preUpgrade: true
+  postUpgrade: true
