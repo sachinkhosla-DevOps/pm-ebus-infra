@@ -1,0 +1,23 @@
+apiVersion: acid.zalan.do/v1
+kind: postgresql
+metadata:
+  name: patroni-cluster
+  namespace: patroni
+spec:
+  teamId: "ebus"
+  volume:
+    size: 5Gi
+  numberOfInstances: 2
+  postgresql:
+    version: "16"
+    parameters:
+      wal_level: logical
+      max_replication_slots: "10"
+      max_wal_senders: "10"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
