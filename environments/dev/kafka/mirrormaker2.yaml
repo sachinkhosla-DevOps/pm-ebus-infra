@@ -16,7 +16,7 @@ metadata:
   name: ebus-mirror
   namespace: kafka
 spec:
-  version: "3.9.0"
+  version: "4.2.0"
   replicas: 1
   connectCluster: ebus-kafka-dr
 
