@@ -31,7 +31,7 @@ spec:
         command: ['sh', '-c', 'until nc -z patroni-cluster.patroni.svc.cluster.local 5432; do echo waiting for postgres; sleep 3; done']
       containers:
       - name: strapi
-        image: strapi/strapi:latest
+        image: naskio/strapi:latest-alpine
         ports:
         - containerPort: 1337
         env:
@@ -107,15 +107,16 @@ spec:
           httpGet:
             path: /_health
             port: 1337
-          initialDelaySeconds: 60
-          periodSeconds: 15
-          failureThreshold: 10
+          initialDelaySeconds: 120
+          periodSeconds: 20
+          failureThreshold: 15
         livenessProbe:
           httpGet:
             path: /_health
             port: 1337
-          initialDelaySeconds: 90
+          initialDelaySeconds: 180
           periodSeconds: 30
+          failureThreshold: 5
       volumes:
       - name: uploads
         persistentVolumeClaim:
