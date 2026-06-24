@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: strapi-uploads
+  namespace: strapi
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strapi
+  namespace: strapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: strapi
+  template:
+    metadata:
+      labels:
+        app: strapi
+    spec:
+      initContainers:
+      - name: wait-for-db
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -z patroni-cluster.patroni.svc.cluster.local 5432; do echo waiting for postgres; sleep 3; done']
+      containers:
+      - name: strapi
+        image: strapi/strapi:latest
+        ports:
+        - containerPort: 1337
+        env:
+        - name: NODE_ENV
+          value: development
+        - name: DATABASE_CLIENT
+          value: postgres
+        - name: DATABASE_SSL
+          value: "true"
+        - name: DATABASE_SSL_REJECT_UNAUTHORIZED
+          value: "false"
+        - name: DATABASE_HOST
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: DATABASE_HOST
+        - name: DATABASE_PORT
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: DATABASE_PORT
+        - name: DATABASE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: DATABASE_NAME
+        - name: DATABASE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: DATABASE_USERNAME
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: DATABASE_PASSWORD
+        - name: APP_KEYS
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: APP_KEYS
+        - name: API_TOKEN_SALT
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: API_TOKEN_SALT
+        - name: ADMIN_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: ADMIN_JWT_SECRET
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: JWT_SECRET
+        - name: TRANSFER_TOKEN_SALT
+          valueFrom:
+            secretKeyRef:
+              name: strapi-secret
+              key: TRANSFER_TOKEN_SALT
+        volumeMounts:
+        - name: uploads
+          mountPath: /opt/app/public/uploads
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        readinessProbe:
+          httpGet:
+            path: /_health
+            port: 1337
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          failureThreshold: 10
+        livenessProbe:
+          httpGet:
+            path: /_health
+            port: 1337
+          initialDelaySeconds: 90
+          periodSeconds: 30
+      volumes:
+      - name: uploads
+        persistentVolumeClaim:
+          claimName: strapi-uploads
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: strapi
+  namespace: strapi
+spec:
+  selector:
+    app: strapi
+  type: NodePort
+  ports:
+  - port: 1337
+    targetPort: 1337
+    nodePort: 30133
