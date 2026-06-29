@@ -15,11 +15,11 @@ redis:
 
 # External PostgreSQL (Patroni)
 supersetMetadataURL: >-
-  postgresql+psycopg2://superset:superset@PMeBus2026@patroni-cluster.patroni.svc.cluster.local:5432/superset?sslmode=require
+  postgresql+psycopg2://superset:superset%40PMeBus2026@patroni-cluster.patroni.svc.cluster.local:5432/superset?sslmode=require
 
 # External Redis/Valkey
-supersetCeleryBroker: redis://:ebus@Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/0
-supersetCeleryResultBackend: redis://:ebus@Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/1
+supersetCeleryBroker: redis://:ebus%40Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/0
+supersetCeleryResultBackend: redis://:ebus%40Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/1
 
 # Admin credentials
 init:
@@ -35,12 +35,12 @@ configOverrides:
   secret_key: |
     SECRET_KEY = 'pmeBusSupersetSecretKey2026!@#'
   db_uri: |
-    SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://superset:superset@PMeBus2026@patroni-cluster.patroni.svc.cluster.local:5432/superset?sslmode=require'
+    SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://superset:superset%40PMeBus2026@patroni-cluster.patroni.svc.cluster.local:5432/superset?sslmode=require'
   celery_conf: |
     from celery.schedules import crontab
     CELERY_CONFIG = {
-        'broker_url': 'redis://:ebus@Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/0',
-        'result_backend': 'redis://:ebus@Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/1',
+        'broker_url': 'redis://:ebus%40Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/0',
+        'result_backend': 'redis://:ebus%40Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/1',
     }
   feature_flags: |
     FEATURE_FLAGS = {
@@ -54,7 +54,8 @@ configOverrides:
 service:
   type: NodePort
   port: 8088
-  nodePort: 30088
+  nodePort:
+    http: 30088
 
 # Resources
 resources:
