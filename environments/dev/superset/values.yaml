@@ -13,13 +13,27 @@ postgresql:
 redis:
   enabled: false
 
-# External PostgreSQL (Patroni)
-supersetMetadataURL: >-
-  postgresql+psycopg2://superset:superset%40PMeBus2026@patroni-cluster.patroni.svc.cluster.local:5432/superset?sslmode=require
-
-# External Redis/Valkey
-supersetCeleryBroker: redis://:ebus%40Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/0
-supersetCeleryResultBackend: redis://:ebus%40Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/1
+# Connection config for init container + app
+supersetNode:
+  connections:
+    db_type: "postgresql"
+    db_host: "patroni-cluster.patroni.svc.cluster.local"
+    db_port: "5432"
+    db_user: superset
+    db_pass: "superset@PMeBus2026"
+    db_name: superset
+    redis_host: "valkey-primary.valkey.svc.cluster.local"
+    redis_port: "6379"
+    redis_user: ""
+    redis_cache_db: "1"
+    redis_celery_db: "0"
+  resources:
+    requests:
+      cpu: 400m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
 
 # Admin credentials
 init:
@@ -30,14 +44,17 @@ init:
     lastname: Admin
     email: sachin.khosla@orahi.com
 
-# Secret key for sessions
+# Superset Python config overrides
 configOverrides:
   secret_key: |
     SECRET_KEY = 'pmeBusSupersetSecretKey2026!@#'
-  db_uri: |
-    SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://superset:superset%40PMeBus2026@patroni-cluster.patroni.svc.cluster.local:5432/superset?sslmode=require'
-  celery_conf: |
-    from celery.schedules import crontab
+  redis_auth: |
+    CACHE_CONFIG = {
+        'CACHE_TYPE': 'RedisCache',
+        'CACHE_DEFAULT_TIMEOUT': 300,
+        'CACHE_KEY_PREFIX': 'superset_',
+        'CACHE_REDIS_URL': 'redis://:ebus%40Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/1',
+    }
     CELERY_CONFIG = {
         'broker_url': 'redis://:ebus%40Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/0',
         'result_backend': 'redis://:ebus%40Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/1',
@@ -50,23 +67,14 @@ configOverrides:
         "ALERTS_ATTACH_REPORTS": True,
     }
 
-# Service — NodePort for external access
+# Service — NodePort for kubectl port-forward / access
 service:
   type: NodePort
   port: 8088
   nodePort:
     http: 30088
 
-# Resources
-resources:
-  requests:
-    cpu: 400m
-    memory: 1Gi
-  limits:
-    cpu: 2000m
-    memory: 2Gi
-
-# Workers (Celery)
+# Celery worker
 celeryWorker:
   replicaCount: 1
   resources:
@@ -77,19 +85,8 @@ celeryWorker:
       cpu: 1000m
       memory: 1Gi
 
-# Beat scheduler
 celeryBeat:
   enabled: true
 
-# Flower (Celery monitor) — disable for dev
 flower:
   enabled: false
-
-# Persistence for uploads
-extraVolumes:
-  - name: superset-uploads
-    emptyDir: {}
-
-extraVolumeMounts:
-  - name: superset-uploads
-    mountPath: /app/superset/static/uploads
