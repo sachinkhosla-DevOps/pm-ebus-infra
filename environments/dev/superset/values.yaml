@@ -6,6 +6,12 @@ image:
   tag: "6.1.0"
   pullPolicy: IfNotPresent
 
+# Bootstrap installs psycopg2 (PostgreSQL driver) into the image at startup
+bootstrapScript: |
+  #!/bin/bash
+  pip install --quiet psycopg2-binary==2.9.10 redis==5.0.8 && \
+  if [ ! -f ~/bootstrap ]; then echo "bootstrap"; touch ~/bootstrap; fi
+
 # Disable bundled PostgreSQL and Redis — use our Patroni + Valkey
 postgresql:
   enabled: false
