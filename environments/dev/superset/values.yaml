@@ -1,0 +1,94 @@
+# Apache Superset 6.1.0 — PM-eBus ITMS Analytics
+# Uses Patroni (PostgreSQL) as metadata DB and Valkey as cache/Celery broker
+
+image:
+  repository: apache/superset
+  tag: "6.1.0"
+  pullPolicy: IfNotPresent
+
+# Disable bundled PostgreSQL and Redis — use our Patroni + Valkey
+postgresql:
+  enabled: false
+
+redis:
+  enabled: false
+
+# External PostgreSQL (Patroni)
+supersetMetadataURL: >-
+  postgresql+psycopg2://superset:superset@PMeBus2026@patroni-cluster.patroni.svc.cluster.local:5432/superset?sslmode=require
+
+# External Redis/Valkey
+supersetCeleryBroker: redis://:ebus@Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/0
+supersetCeleryResultBackend: redis://:ebus@Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/1
+
+# Admin credentials
+init:
+  adminUser:
+    username: admin
+    password: "admin@PMeBus2026"
+    firstname: PM-eBus
+    lastname: Admin
+    email: sachin.khosla@orahi.com
+
+# Secret key for sessions
+configOverrides:
+  secret_key: |
+    SECRET_KEY = 'pmeBusSupersetSecretKey2026!@#'
+  db_uri: |
+    SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://superset:superset@PMeBus2026@patroni-cluster.patroni.svc.cluster.local:5432/superset?sslmode=require'
+  celery_conf: |
+    from celery.schedules import crontab
+    CELERY_CONFIG = {
+        'broker_url': 'redis://:ebus@Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/0',
+        'result_backend': 'redis://:ebus@Valkey2026@valkey-primary.valkey.svc.cluster.local:6379/1',
+    }
+  feature_flags: |
+    FEATURE_FLAGS = {
+        "ENABLE_TEMPLATE_PROCESSING": True,
+        "DASHBOARD_NATIVE_FILTERS": True,
+        "DASHBOARD_CROSS_FILTERS": True,
+        "ALERTS_ATTACH_REPORTS": True,
+    }
+
+# Service — NodePort for external access
+service:
+  type: NodePort
+  port: 8088
+  nodePort: 30088
+
+# Resources
+resources:
+  requests:
+    cpu: 400m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# Workers (Celery)
+celeryWorker:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Beat scheduler
+celeryBeat:
+  enabled: true
+
+# Flower (Celery monitor) — disable for dev
+flower:
+  enabled: false
+
+# Persistence for uploads
+extraVolumes:
+  - name: superset-uploads
+    emptyDir: {}
+
+extraVolumeMounts:
+  - name: superset-uploads
+    mountPath: /app/superset/static/uploads
